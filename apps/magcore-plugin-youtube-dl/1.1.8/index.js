@@ -5610,7 +5610,7 @@ exports.validateURL = function (string) {
  * @param {Object} info
  * @return {Array.<Object>}
  */
-exports.parseFormats = function (info) {
+/*exports.parseFormats = function (info) {
   var formats = [];
   if (info.url_encoded_fmt_stream_map) {
     formats = formats.concat(info.url_encoded_fmt_stream_map.split(','));
@@ -5626,6 +5626,72 @@ exports.parseFormats = function (info) {
   delete info.adaptive_fmts;
 
   return formats;
+};
+*/
+//patch 2020-01-21 https://github.com/GeraldBrooks/youtube/issues/42#issuecomment-576526944
+exports.parseFormats = function (info) {
+    var formats = [];
+
+    if (info.player_response.streamingData.formats) {
+      var fmts = info.player_response.streamingData.formats;
+
+      for(var i = 0; i < fmts.length; i++) {
+
+        if(fmts[i].mimeType.indexOf('mp4') !== -1) {
+
+          var obj_keys = Object.keys(fmts[i]);
+
+          var attrs = [];
+
+          for(var j = 0; j < obj_keys.length; j++) {
+
+            if(obj_keys[j] == 'cipher') {
+                
+              var cipher = qs.parse(fmts[i].cipher);
+
+              attrs[j] = 'url=' + cipher.url;
+              fmts[i].url = cipher.url;
+              attrs[obj_keys.length] = 'sp=sig';
+              attrs[obj_keys.length + 1] = 's=' + cipher.s;
+
+            //-- @FIX 2020-05-19
+            // @see https://github.com/fent/node-ytdl-core/commit/c7e4472
+            } else if(obj_keys[j] == 'signatureCipher') {
+                var cipher = qs.parse(fmts[i].signatureCipher);
+                
+                attrs[j] = 'url=' + cipher.url;
+                fmts[i].url = cipher.url;
+                attrs[obj_keys.length] = 'sp=sig';
+                attrs[obj_keys.length + 1] = 's=' + cipher.s;
+            //--
+            } else {
+
+              attrs[j] = obj_keys[j] + '=' + fmts[i][obj_keys[j]];
+
+            }
+          }
+
+          formats[i] = attrs.join('&');
+        }
+      }
+    }
+
+
+    formats = formats.map(function (format) {
+      return qs.parse(format);
+    });
+
+
+    for(var i = 0; i < formats.length; i++) {
+
+      try {
+        formats[i].url = fmts[i].url;
+      } catch(e) {}
+
+    }
+
+
+    return formats;
 };
 
 /**
@@ -10233,7 +10299,11 @@ exports.setDownloadURL = function (format, sig, debug) {
   // See https://github.com/fent/node-ytdl-core/issues/127
   query.ratebypass = 'yes';
   if (sig) {
-    query.signature = sig;
+    if (format.sp) {
+      query[format.sp] = sig;
+    } else {
+      query.signature = sig;
+    }
   }
 
   format.url = url.format(parsedUrl);
@@ -13891,7 +13961,16 @@ exports.getBasicInfo = function (id, options, callback) {
     var jsonStr = util.between(body, 'ytplayer.config = ', '</script>');
     var config = void 0;
     if (jsonStr) {
-      config = jsonStr.slice(0, jsonStr.lastIndexOf(';ytplayer.load'));
+      //-- @FIX 2020-05-19 - @see https://github.com/GeraldBrooks/youtube/issues/42#issuecomment-610063157
+      //config = jsonStr.slice(0, jsonStr.lastIndexOf(';ytplayer.load'));
+      var indexWebPlayer = jsonStr.lastIndexOf(';ytplayer.web_player_context_config');
+      var indexLoad = jsonStr.lastIndexOf(';ytplayer.load');
+      if (indexWebPlayer !== -1 && indexLoad > indexWebPlayer) {
+          config = jsonStr.slice(0, jsonStr.lastIndexOf(';ytplayer.web_player_context_config'));
+      } else {
+          config = jsonStr.slice(0, jsonStr.lastIndexOf(';ytplayer.load'));
+      }
+      //--
       gotConfig(id, options, additional, config, false, callback);
     } else {
       // If the video page doesn't work, maybe because it has mature content.
