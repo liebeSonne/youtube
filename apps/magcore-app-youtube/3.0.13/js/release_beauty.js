@@ -2600,6 +2600,7 @@
         l = i(4);
     s.prototype = Object.create(l.prototype), s.prototype.constructor = s, s.prototype.getPage = function(e, t) {
         var i = this;
+        var youtubeIndex;
         e.page = +e.page || 0, this.pages[e.page] && this.pages[e.page].parseId ? this.pages[e.page].cached ? t(null, this.pages[e.page].data) : o("get", "https://www.youtube.com" + this.pages[e.page].parseId, function(s, a) {
             var o, l, c, r, d;
             if (200 !== a) return void t({
@@ -2619,19 +2620,40 @@
             }, [])
         }) : e.page ? this.pages[e.page] && !this.pages[e.page].parseId ? t(null, []) : t({
             message: "wrong page number (page id not found in cache)"
-        }, []) : o("get", "https://www.youtube.com/", function(s, a) {
-            var o, l, c;
-            return 200 !== a ? void t({
-                message: "request got bad http status (" + a + ")"
-            }, []) : (l = s.indexOf('data-uix-load-more-href="') + 25, c = s.indexOf('"', l), i.pages[e.page + 1] = {
-                parseId: s.substring(l, c).replace(/&amp;/g, "&"),
-                cached: !1
-            }, o = s.slice(s.indexOf('id="feed-main-'), s.indexOf('id="feed-error"')), i.pages[0] = {
-                cached: !0,
-                parseId: "   ",
-                data: n(o)
-            }, void t(null, i.pages[0].data))
-        })
+        }, []) : (youtubeIndex = function(cur_try, max_try) {
+            cur_try = cur_try || 1,
+                max_try = max_try || 1,
+                console.log('try = ' + cur_try + ' / ' + max_try),
+                o("get", "https://www.youtube.com/", function(s, a) {
+                    var o, l, c;
+                    var cur_l;
+                    return (200 !== a ? void t({
+                            message: "request got bad http status (" + a + ")"
+                        }, []) :
+                        (cur_l = s.indexOf('data-uix-load-more-href="')) == -1 && cur_try < max_try ?
+                        (console.log('cur_l=' + cur_l), setTimeout(function() {
+                            youtubeIndex(++cur_try, max_try)
+                        }, 3000)) :
+                        cur_l == -1 ? (console.log('cur_l=' + cur_l + ' empty'), void t(null, [])) :
+                        (
+                            l = s.indexOf('data-uix-load-more-href="') + 25,
+                            console.log('l = ' + l),
+                            c = s.indexOf('"', l),
+                            i.pages[e.page + 1] = {
+                                parseId: s.substring(l, c).replace(/&amp;/g, "&"),
+                                cached: !1
+                            },
+                            o = s.slice(s.indexOf('id="feed-main-'), s.indexOf('id="feed-error"')),
+                            i.pages[0] = {
+                                cached: !0,
+                                parseId: "   ",
+                                data: n(o)
+                            },
+                            void t(null, i.pages[0].data)
+                        )
+                    )
+                })
+        }, youtubeIndex(1, 5))
     }, s.prototype.filter = function() {
         return !1
     }, e.exports = s
